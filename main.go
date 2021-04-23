@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os/exec"
@@ -24,6 +25,14 @@ func serve(target string) http.HandlerFunc {
 			return
 		}
 
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			log.Println(err)
+			return
+		}
+		bodyBuf := bytes.NewBuffer(body)
+
 		var command string
 		if strings.HasSuffix(path, ".gif") {
 			command = "gif2webp"
@@ -31,14 +40,16 @@ func serve(target string) http.HandlerFunc {
 			command = "cwebp"
 		}
 		var b bytes.Buffer
-		convertCmd := exec.Command(command, "-quiet", "-o", "-", "--", "-")
-		convertCmd.Stdin = resp.Body
+		convertCmd := exec.Command(command, "-o", "-", "--", "-")
+		convertCmd.Stdin = bodyBuf
 		convertCmd.Stdout = &b
 
 		err = convertCmd.Run()
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
 			log.Println(err)
+			// something went wrong, use original image
+			resp.Header.Write(w)
+			w.Write(body)
 			return
 		}
 
