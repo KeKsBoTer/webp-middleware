@@ -1,0 +1,59 @@
+on:
+  push:
+    tags:
+      - "v*"
+
+name: Create Release
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16
+
+      - name: Build
+        run: |
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -a -installsuffix nocgo -o webp_middleware_arm64 .
+          zip --junk-paths webp_middleware_arm64 webp_middleware_arm64
+
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -a -installsuffix nocgo -o webp_middleware_amd64 .
+          zip --junk-paths webp_middleware_amd64 webp_middleware_amd64
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset linux/arm64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./webp_middleware_arm64.zip
+          asset_name: webp_middleware_arm64.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Asset linux/amd64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./webp_middleware_amd64.zip
+          asset_name: webp_middleware_amd64.zip
+          asset_content_type: application/zip
