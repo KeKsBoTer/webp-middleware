@@ -1,1 +1,1 @@
-Headers from image server are now kept in the response
+Fixed bug that resulted in a empty "Last-Modified" header in the response.

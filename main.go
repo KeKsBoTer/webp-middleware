@@ -31,6 +31,13 @@ func serve(target string) http.HandlerFunc {
 			log.Println(err)
 			return
 		}
+
+		// copy headers from response to send them to client
+		h := w.Header()
+		for k := range resp.Header {
+			h.Set(k, resp.Header.Get(k))
+		}
+
 		bodyBuf := bytes.NewBuffer(body)
 
 		var command string
@@ -44,18 +51,19 @@ func serve(target string) http.HandlerFunc {
 		convertCmd.Stdin = bodyBuf
 		convertCmd.Stdout = &b
 
-		h := w.Header()
-		// something went wrong, use original image
-		for k := range resp.Header {
-			h.Set(k, h.Get(k))
-		}
-
 		err = convertCmd.Run()
 		if err != nil {
+			// something went wrong, use original image
 			log.Println(err)
 			w.Write(body)
 			return
 		}
+		// delete headers that must not be set or should be rewritten
+		h.Del("Content-Type")
+		h.Del("Accept-Ranges")
+		h.Del("Content-Length")
+		h.Del("Date")
+
 		b.WriteTo(w)
 	}
 }
