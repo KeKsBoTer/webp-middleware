@@ -44,15 +44,18 @@ func serve(target string) http.HandlerFunc {
 		convertCmd.Stdin = bodyBuf
 		convertCmd.Stdout = &b
 
+		h := w.Header()
+		// something went wrong, use original image
+		for k := range resp.Header {
+			h.Set(k, h.Get(k))
+		}
+
 		err = convertCmd.Run()
 		if err != nil {
 			log.Println(err)
-			// something went wrong, use original image
-			resp.Header.Write(w)
 			w.Write(body)
 			return
 		}
-
 		b.WriteTo(w)
 	}
 }
