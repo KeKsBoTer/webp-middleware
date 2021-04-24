@@ -5,67 +5,45 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os/exec"
 	"strings"
 )
 
-func serve(target string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		resp, err := http.Get(target + path)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			log.Println(err)
-			return
-		}
-		if resp.StatusCode != http.StatusOK {
-			w.WriteHeader(resp.StatusCode)
-			return
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			log.Println(err)
-			return
-		}
-
-		// copy headers from response to send them to client
-		h := w.Header()
-		for k := range resp.Header {
-			h.Set(k, resp.Header.Get(k))
-		}
-
-		bodyBuf := bytes.NewBuffer(body)
-
-		var command string
-		if strings.HasSuffix(path, ".gif") {
-			command = "gif2webp"
-		} else {
-			command = "cwebp"
-		}
-		var b bytes.Buffer
-		convertCmd := exec.Command(command, "-o", "-", "--", "-")
-		convertCmd.Stdin = bodyBuf
-		convertCmd.Stdout = &b
-
-		err = convertCmd.Run()
-		if err != nil {
-			// something went wrong, use original image
-			log.Println(err)
-			w.Write(body)
-			return
-		}
-		// delete headers that must not be set or should be rewritten
-		h.Del("Content-Type")
-		h.Del("Accept-Ranges")
-		h.Del("Content-Length")
-		h.Del("Date")
-
-		b.WriteTo(w)
+func convert(resp *http.Response) error {
+	if resp.StatusCode != http.StatusOK {
+		return nil
 	}
+	path := resp.Request.URL.Path
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	bodyBuf := bytes.NewBuffer(body)
+
+	var command string
+	if strings.HasSuffix(path, ".gif") {
+		command = "gif2webp"
+	} else {
+		command = "cwebp"
+	}
+	var b bytes.Buffer
+	convertCmd := exec.Command(command, "-o", "-", "--", "-")
+	convertCmd.Stdin = bodyBuf
+	convertCmd.Stdout = &b
+
+	err = convertCmd.Run()
+	if err != nil {
+		return err
+	}
+	resp.Body = io.NopCloser(&b)
+	resp.Header.Del("Content-Length")
+	resp.Header.Del("Accept-Ranges")
+	resp.Header.Set("Transfer-Encoding", "chunked")
+	resp.Header.Set("Content-Type", "image/webp")
+	return nil
 }
 
 func main() {
@@ -75,7 +53,15 @@ func main() {
 
 	flag.Parse()
 
-	http.HandleFunc("/", serve(*target))
+	t, err := url.Parse(*target)
+	if err != nil {
+		panic(err)
+	}
+
+	reverseProxy := httputil.NewSingleHostReverseProxy(t)
+	reverseProxy.ModifyResponse = convert
+
+	http.Handle("/", reverseProxy)
 	fmt.Printf("starting webp image convertion server on http://localhost:%d\n", *port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil); err != nil {
 		panic(err)
