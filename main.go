@@ -30,12 +30,16 @@ func convert(resp *http.Response) error {
 		command = "cwebp"
 	}
 	var b bytes.Buffer
+	var b_err bytes.Buffer
 	convertCmd := exec.Command(command, "-o", "-", "--", "-")
 	convertCmd.Stdin = bodyBuf
 	convertCmd.Stdout = &b
+	convertCmd.Stdout = &b_err
 
 	err = convertCmd.Run()
 	if err != nil {
+		stderr, _ := b_err.ReadString(0)
+		fmt.Println("Error converting: ", stderr)
 		return err
 	}
 	resp.Body = io.NopCloser(&b)
