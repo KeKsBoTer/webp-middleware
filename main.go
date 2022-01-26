@@ -34,7 +34,7 @@ func convert(resp *http.Response) error {
 	convertCmd := exec.Command(command, "-o", "-", "--", "-")
 	convertCmd.Stdin = bodyBuf
 	convertCmd.Stdout = &b
-	convertCmd.Stdout = &b_err
+	convertCmd.Stderr = &b_err
 
 	err = convertCmd.Run()
 	if err != nil {
